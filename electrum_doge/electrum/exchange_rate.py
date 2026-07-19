@@ -359,7 +359,7 @@ class CoinGecko(ExchangeBase):
                      for ccy, d in json['rates'].items()])
         """
         json = await self.get_json('api.coingecko.com', '/api/v3/coins/dogecoin')
-        return dict([(ccy.upper(), Decimal(d['value']))
+        return dict([(ccy.upper(), Decimal(str(d)))
                      for ccy, d in json['market_data']['current_price'].items()])
 
     def history_ccys(self):
@@ -727,3 +727,4 @@ class FxThread(ThreadJob):
 
 
 assert globals().get(DEFAULT_EXCHANGE), f"default exchange {DEFAULT_EXCHANGE} does not exist"
+

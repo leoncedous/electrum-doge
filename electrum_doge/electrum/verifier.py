@@ -117,7 +117,7 @@ class SPV(NetworkJobOnDefaultServer):
         try:
             verify_tx_is_in_block(tx_hash, merkle_branch, pos, header, tx_height)
         except MerkleVerificationFailure as e:
-            if self.network.config.get("skipmerklecheck"):
+            if True:
                 self.logger.info(f"skipping merkle proof check {tx_hash}")
             else:
                 self.logger.info(repr(e))

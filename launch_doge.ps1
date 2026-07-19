@@ -1,0 +1,1 @@
+& "$HOME\python311\python.exe" -W ignore::DeprecationWarning run_electrum_doge 2>$null

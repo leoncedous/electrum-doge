@@ -318,7 +318,7 @@ def main():
 
     # config is an object passed to the various constructors (wallet, interface, gui)
     if is_android:
-        from jnius import autoclass # type: ignore
+        from jnius import autoclass
         build_config = autoclass("org.electrum.electrum.BuildConfig")
         config_options = {
             'verbosity': '*' if build_config.DEBUG else '',

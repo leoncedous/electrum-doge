@@ -25,57 +25,93 @@
 
 import os
 import sys
-import ctypes
 
 from .logging import get_logger
+from .i18n import _
 
 
 _logger = get_logger(__name__)
 
 
-if sys.platform == 'darwin':
-    name = 'libzbar.dylib'
-elif sys.platform in ('windows', 'win32'):
-    name = 'libzbar-0.dll'
-else:
-    name = 'libzbar.so.0'
-
 try:
-    libzbar = ctypes.cdll.LoadLibrary(os.path.join(os.path.dirname(__file__), name))
-except BaseException as e1:
+    import cv2
+except ImportError as e:
+    cv2 = None
+    if sys.platform != 'darwin':
+        _logger.error(f"failed to load cv2: {e!r}")
+
+scanner_available = cv2 is not None
+
+
+def _resolve_video_device(device: str):
+    if not device:
+        return 0
     try:
-        libzbar = ctypes.cdll.LoadLibrary(name)
-    except BaseException as e2:
-        libzbar = None
-        if sys.platform != 'darwin':
-            _logger.error(f"failed to load zbar. exceptions: {[e1,e2]!r}")
+        return int(device)
+    except ValueError:
+        return device  # e.g. a Linux /dev/videoN path
 
 
-def scan_barcode_ctypes(device='', timeout=-1, display=True, threaded=False):
-    if libzbar is None:
-        raise RuntimeError("Cannot start QR scanner; zbar not available.")
-    libzbar.zbar_symbol_get_data.restype = ctypes.c_char_p
-    libzbar.zbar_processor_create.restype = ctypes.POINTER(ctypes.c_int)
-    libzbar.zbar_processor_get_results.restype = ctypes.POINTER(ctypes.c_int)
-    libzbar.zbar_symbol_set_first_symbol.restype = ctypes.POINTER(ctypes.c_int)
-    # libzbar.zbar_set_verbosity(100)  # verbose logs for debugging
-    proc = libzbar.zbar_processor_create(threaded)
-    libzbar.zbar_processor_request_size(proc, 640, 480)
-    if libzbar.zbar_processor_init(proc, device.encode('utf-8'), display) != 0:
-        raise RuntimeError("Can not start QR scanner; initialization failed.")
-    libzbar.zbar_processor_set_visible(proc)
-    if libzbar.zbar_process_one(proc, timeout):
-        symbols = libzbar.zbar_processor_get_results(proc)
+def scan_barcode_cv2(device=''):
+    if not scanner_available:
+        raise RuntimeError("Cannot start QR scanner; opencv not available.")
+    from PyQt5.QtCore import QTimer
+    from PyQt5.QtGui import QImage, QPixmap
+    from PyQt5.QtWidgets import QDialog, QLabel, QVBoxLayout
+
+    resolved_device = _resolve_video_device(device)
+    if sys.platform == 'win32' and isinstance(resolved_device, int):
+        capture = cv2.VideoCapture(resolved_device, cv2.CAP_DSHOW)
     else:
-        symbols = None
-    libzbar.zbar_processor_destroy(proc)
-    if symbols is None:
-        return
-    if not libzbar.zbar_symbol_set_get_size(symbols):
-        return
-    symbol = libzbar.zbar_symbol_set_first_symbol(symbols)
-    data = libzbar.zbar_symbol_get_data(symbol)
-    return data.decode('utf8')
+        capture = cv2.VideoCapture(resolved_device)
+    if not capture.isOpened():
+        capture.release()
+        raise RuntimeError("Cannot start QR scanner; camera not available.")
+    # request a higher resolution than the (often low) camera default, so QR
+    # modules are large enough in pixels for the detector to decode reliably
+    capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+    # Note: cv2.QRCodeDetector (and QRCodeDetectorAruco) reliably fail to decode
+    # QR codes with a logo overlaid in the center (e.g. this wallet's own
+    # receive-address QR) -- zbar handles that erasure recovery far better,
+    # but would reintroduce the libzbar/MSVCR120.dll dependency.
+    detector = cv2.QRCodeDetector()
+    dialog = QDialog()
+    dialog.setWindowTitle(_("Scan QR code"))
+    label = QLabel()
+    label.setScaledContents(True)
+    label.setFixedSize(640, 480)
+    layout = QVBoxLayout(dialog)
+    layout.addWidget(label)
+
+    result = None
+
+    def update_frame():
+        nonlocal result
+        ok, frame = capture.read()
+        if not ok:
+            return
+        data, _points, _straight_qrcode = detector.detectAndDecode(frame)
+        if data:
+            result = data
+            dialog.accept()
+            return
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        height, width, channels = rgb_frame.shape
+        qimage = QImage(rgb_frame.data, width, height, channels * width, QImage.Format_RGB888)
+        label.setPixmap(QPixmap.fromImage(qimage))
+
+    timer = QTimer()
+    timer.timeout.connect(update_frame)
+    timer.start(30)
+    try:
+        dialog.exec_()
+    finally:
+        timer.stop()
+        capture.release()
+
+    return result
 
 def scan_barcode_osx(*args_ignored, **kwargs_ignored):
     import subprocess
@@ -98,7 +134,7 @@ def scan_barcode_osx(*args_ignored, **kwargs_ignored):
     except OSError as e:
         raise RuntimeError("Cannot start camera helper app; {}".format(e.strerror))
 
-scan_barcode = scan_barcode_osx if sys.platform == 'darwin' else scan_barcode_ctypes
+scan_barcode = scan_barcode_osx if sys.platform == 'darwin' else scan_barcode_cv2
 
 def _find_system_cameras():
     device_root = "/sys/class/video4linux"

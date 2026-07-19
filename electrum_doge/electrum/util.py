@@ -351,7 +351,7 @@ class DaemonThread(threading.Thread, Logger):
 
     def on_stop(self):
         if 'ANDROID_DATA' in os.environ:
-            import jnius
+            import jnius # type: ignore
             jnius.detach()
             self.logger.info("jnius detach")
         self.logger.info("stopped")
@@ -409,7 +409,7 @@ def profiler(func):
 
 
 def android_ext_dir():
-    from android.storage import primary_external_storage_path
+    from android.storage import primary_external_storage_path # type: ignore
     return primary_external_storage_path()
 
 def android_backup_dir():
@@ -419,7 +419,7 @@ def android_backup_dir():
     return d
 
 def android_data_dir():
-    import jnius
+    import jnius # type: ignore
     PythonActivity = jnius.autoclass('org.kivy.android.PythonActivity')
     return PythonActivity.mActivity.getFilesDir().getPath() + '/data'
 
@@ -758,7 +758,7 @@ def block_explorer_info():
 
 def block_explorer(config: 'SimpleConfig') -> str:
     from . import constants
-    default_ = 'Cyphrs.com'
+    default_ = 'dogechain.info'
     be_key = config.get('block_explorer', default_)
     be = block_explorer_info().get(be_key)
     return be_key if be is not None else default_
@@ -1462,3 +1462,4 @@ def test_read_write_permissions(path) -> None:
         raise IOError(e) from e
     if echo != echo2:
         raise IOError('echo sanity-check failed')
+

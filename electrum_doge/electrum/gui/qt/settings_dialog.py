@@ -215,7 +215,7 @@ Use this if you want your local watchtower to keep running after you close your 
         qr_combo.setCurrentIndex(index)
         msg = _("Install the zbar package to enable this.")
         qr_label = HelpLabel(_('Video Device') + ':', msg)
-        qr_combo.setEnabled(qrscanner.libzbar is not None)
+        qr_combo.setEnabled(qrscanner.scanner_available)
         on_video_device = lambda x: self.config.set_key("video_device", qr_combo.itemData(x), True)
         qr_combo.currentIndexChanged.connect(on_video_device)
         gui_widgets.append((qr_label, qr_combo))
